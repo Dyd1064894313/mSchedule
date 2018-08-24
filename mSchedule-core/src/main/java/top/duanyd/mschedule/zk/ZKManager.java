@@ -7,7 +7,6 @@ import org.apache.curator.retry.RetryNTimes;
 import org.apache.zookeeper.ZooDefs;
 import org.apache.zookeeper.data.ACL;
 import org.apache.zookeeper.data.Id;
-import org.apache.zookeeper.server.auth.DigestAuthenticationProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,25 +23,27 @@ import java.util.concurrent.TimeUnit;
  */
 public class ZKManager {
 
-    private static transient Logger log = LoggerFactory.getLogger(ZKManager.class);
+    private static transient Logger logger = LoggerFactory.getLogger(ZKManager.class);
     private Properties properties;
     private CuratorFramework client;
     private ACLProvider aclProvider;
+    private String version = "mSchedule-version:1.0.0";
 
     public static String NAME_SPACE = "mSchedule";
 
-    public ZKManager(Properties properties){
+    public ZKManager(Properties properties) throws Exception {
         this.properties = properties;
+        logger.info("连接zookeeper……");
+        this.connect();
     }
 
     private void connect() throws Exception {
         CountDownLatch connectionLatch = new CountDownLatch(1);
-
+        createZookeeper(connectionLatch);
         connectionLatch.await(30,TimeUnit.SECONDS);
     }
 
     private void createZookeeper(final CountDownLatch countDownLatch){
-
         final String authString = this.properties.getProperty(keys.userName.toString())
                 + ":"+ this.properties.getProperty(keys.password.toString());
         aclProvider = new ACLProvider() {
@@ -71,10 +72,51 @@ public class ZKManager {
                 connectString(connectString).namespace(NAME_SPACE).
                 retryPolicy(new RetryNTimes(10, 1000)).build();
         client.start();
+        logger.info("连接成功！");
+    }
+
+    public synchronized void reConnect() throws Exception {
+        logger.info("重新连接zookeeper……");
+        if(client != null){
+            client.close();
+        }
+        client = null;
+        this.connect();
+    }
+
+    public synchronized void close(){
+        logger.info("关闭zookeeper连接");
+        if(client != null){
+            client.close();
+        }
     }
 
     public enum keys {
         zkConnectString, rootPath, userName, password, zkSessionTimeout, isCheckParentPath
     }
 
+    public ACLProvider getAclProvider(){
+        return aclProvider;
+    }
+
+    public CuratorFramework getZKClient() throws Exception {
+        if(client == null){
+            this.connect();
+        }
+        return this.client;
+    }
+
+    public String getRootPath(){
+        return properties.getProperty(keys.rootPath.toString(), "");
+    }
+
+    public void initRoot() throws Exception {
+        if(client == null){
+            this.connect();
+        }
+        String rootPath = getRootPath();
+        if(client.checkExists().forPath(rootPath) == null){
+
+        }
+    }
 }
